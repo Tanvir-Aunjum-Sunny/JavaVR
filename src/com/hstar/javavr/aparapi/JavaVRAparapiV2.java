@@ -8,17 +8,14 @@ import java.awt.Toolkit;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
-import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
@@ -44,37 +41,35 @@ import static org.opencv.calib3d.Calib3d.*;
  */
 public class JavaVRAparapiV2 {
 
-    private static Path libsDir;
-    
+    private static final Path libsDir;
+
     static {
+        Path dir;
         try {
-            libsDir = Files.createTempDirectory("JVR libs");
+            dir = Files.createTempDirectory("JVR libs");
         } catch (IOException ex) {
-            libsDir = null;
+            dir = null;
             Logger.getLogger(JavaVRAparapiV2.class.getName()).log(Level.SEVERE, null, ex);
         }
+        libsDir = dir;
     }
-    
+
     /**
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-        
+
         printMem();
-        
-        
-        
+
+
+
         try {
             InputStream is = JavaVRAparapiV2.class.getResource("opencv_java246.dll").openStream();
-            //addDir("C:\\Users\\Saswat\\Dropbox\\Documents\\Java\\libraries\\opencv");
-            //addDir("C:\\Users\\Saswat\\Dropbox\\Documents\\Java\\libraries\\Aparapi");
-            
+            InputStream is2 = JavaVRAparapiV2.class.getResource("aparapi_x86_64.dll").openStream();
             Files.copy(is, libsDir.resolve("opencv_java246.dll"));
-            
+            Files.copy(is2, libsDir.resolve("aparapi_x86_64.dll"));
             System.out.println(libsDir.toString());
-            
             addDir(libsDir.toString());
-            
         } catch (IOException ex) {
             Logger.getLogger(JavaVRAparapiV2.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -176,14 +171,21 @@ public class JavaVRAparapiV2 {
 
                     double area;
 
-                    if (points.length == 4 && (area = contourArea(mop)) > 300 && distance(points[0], points[2]) > 200 && distance(points[1], points[3]) > 200) {
+                    if (points.length == 4 /*&& contourArea(mop) > 300*/ && distance(points[0], points[2]) > 200 && distance(points[1], points[3]) > 200) {
                         Point hull[];
                         if (distance(points[0], points[1]) > 2 * distance(points[2], points[1])
                                 || distance(points[2], points[1]) > 2 * distance(points[0], points[1])
                                 || (hull = giftWrapping(points)).length != 4) {
                             continue;
                         }
-
+                        
+                        //throw out tiny rectangles
+                        if((area = areaQuad(hull[0], hull[1], hull[2], hull[3])) < 500) {//TODO make resolution independant
+                            //System.out.println("area: "+area);
+                            continue;
+                        }
+                        
+                        
                         List<MatOfPoint> temp = new ArrayList();
                         temp.add(new MatOfPoint(hull));
 
@@ -200,17 +202,39 @@ public class JavaVRAparapiV2 {
                 //*
                 ArrayList<Point[]> insideSquares = new ArrayList<>();
                 ArrayList<Point[]> outsideSquares = new ArrayList<>();
-
+                
                 for (int i = 0; i < possibleRect.size(); i++) {
+                    boolean done = false;
+                    for (int j = 0; j < possibleRect.size(); j++) {//i = outside, j = inside
+                        String print = "";
 
-                    for (int j = 0; j < possibleRect.size(); j++) {
                         Mat test_t = test.clone();
                         Mat gray_t = gray.clone();
 
-                        // check if same rect, the area between rectangles and if one is inside the other
-                        if (j == i || possibleArea.get(i) - possibleArea.get(j) < 100 || !isQuadInQuad(possibleHull.get(i), possibleHull.get(j))) {
+                        // check if same rect, the area between rectangles are no too large/small and if one rectangle is inside the other
+                        if (j == i || !isQuadInQuad(possibleHull.get(i), possibleHull.get(j))) {//TODO make 100/10 resolution independent
+                           continue;
+                        }
+                        
+                        double ratio = possibleArea.get(i)/possibleArea.get(j);
+                        
+                        if(ratio > 2 || ratio < 1.1) {//usually around 1.6
                             continue;
                         }
+                        
+                        /*print += (Math.abs(distance(possibleHull.get(i)[0], possibleHull.get(i)[1])/distance(possibleHull.get(j)[0], possibleHull.get(j)[1])));
+                         print += "\n";
+                         print += ("\td1:" + distance(possibleHull.get(i)[0], possibleHull.get(i)[1]) + "\n\td2:" + distance(possibleHull.get(j)[0], possibleHull.get(j)[1]));
+                         print += "\n";*/
+
+                        //check if the ratios between the small and big sides aren't extreme
+                        /*if (Math.abs(distance(possibleHull.get(i)[0], possibleHull.get(i)[1]) / distance(possibleHull.get(j)[0], possibleHull.get(j)[1])) < .9 ||//TODO find a better solution to false A than extreme thresholds
+                                Math.abs(distance(possibleHull.get(i)[1], possibleHull.get(i)[2]) / distance(possibleHull.get(j)[1], possibleHull.get(j)[2])) < .9
+                                || Math.abs(distance(possibleHull.get(i)[2], possibleHull.get(i)[3]) / distance(possibleHull.get(j)[2], possibleHull.get(j)[3])) < .9
+                                || Math.abs(distance(possibleHull.get(i)[3], possibleHull.get(i)[0]) / distance(possibleHull.get(j)[3], possibleHull.get(j)[0])) < .9) {
+                            
+                            continue;
+                        }*/
 
 
                         Mat sqrp = new Mat(4, 1, CV_32FC2);
@@ -227,10 +251,29 @@ public class JavaVRAparapiV2 {
 
                         Mat trans = getPerspectiveTransform(new MatOfPoint2f(possibleHull.get(i)), new MatOfPoint2f(new Point(0, 0), new Point(0, 500), new Point(500, 500), new Point(500, 0)));
 
+                        //computing rect scale :)
+                        Point mp1 = midpoint(possibleHull.get(i)[0], possibleHull.get(i)[1]);
+                        Point mp2 = midpoint(possibleHull.get(i)[1], possibleHull.get(i)[2]);
+                        Point mp3 = midpoint(possibleHull.get(i)[2], possibleHull.get(i)[3]);
+                        Point mp4 = midpoint(possibleHull.get(i)[3], possibleHull.get(i)[0]);
+
+                        double scale1 = distance(mp3, mp1) / 500;//TODO change 500 to a constant
+                        double scale2 = distance(mp2, mp4) / 500;//TODO change 500 to a constant
+
+                        print += ("s1: " + scale1 + ", s2: " + scale2);
+                        print += "\n";
+
+                        print += ("trans: " + trans.dump());
+                        print += "\n";
                         //Calib3d.
 
                         //decomposeProjectionMatrix(trans, new Mat(), new Mat(), new Mat());
-                        System.out.println(Arrays.toString(RQDecomp3x3(trans, new Mat(), new Mat())));
+                        //System.out.println(Arrays.toString(RQDecomp3x3(trans, new Mat(), new Mat())));
+
+                        Mat homography = findHomography(new MatOfPoint2f(possibleHull.get(i)), new MatOfPoint2f(new Point(0, 0), new Point(0, 500), new Point(500, 500), new Point(500, 0)));
+
+                        print += (homography.dump());
+                        print += "\n";
 
                         warpPerspective(ori, test_t, trans, new Size(500, 500));
                         gray_t = test_t.clone();
@@ -239,7 +282,7 @@ public class JavaVRAparapiV2 {
                         int whiteref = (int) mean(test_t.submat(80, 90, 80, 90)).val[0];
                         int blackref = (int) mean(test_t.submat(20, 30, 20, 30)).val[0];
 
-                        System.out.println("w:" + whiteref + ", b:" + blackref);
+                        //System.out.println("w:" + whiteref + ", b:" + blackref);
 
                         if (whiteref - blackref < 30) {
                             continue;
@@ -251,6 +294,9 @@ public class JavaVRAparapiV2 {
 
                         int angle = 0;
 
+                        Point pointi[] = possibleHull.get(i);
+                        Point pointj[] = possibleHull.get(j);
+                        
                         //check rotations
                         //<editor-fold defaultstate="collapsed" desc="Angles">
                         /*check if triangle is upright
@@ -284,35 +330,85 @@ public class JavaVRAparapiV2 {
                          * 10x10
                          */
                         //</editor-fold>
+                        //<editor-fold defaultstate="collapsed" desc="Image Rotator">
+                        //rotates image and reorders points
                         if (mean(test_t.submat(150, 160, 245, 255)).val[0] > avg) {//upright, continue if area is bright
                             if (mean(test_t.submat(245, 255, 140, 150)).val[0] < avg) {//left, rotate right if area is dark
                                 angle = 270;
+                                Point pt = pointi[0];
+                                pointi[0] = pointi[3];
+                                pointi[3] = pointi[2];
+                                pointi[2] = pointi[1];
+                                pointi[1] = pt;
+                                
+                                pt = pointj[0];
+                                pointj[0] = pointj[1];
+                                pointj[1] = pointj[2];
+                                pointj[2] = pointj[3];
+                                pointj[3] = pt;
                             } else if (mean(test_t.submat(245, 255, 335, 345)).val[0] < avg) {//right, rotate left if area is dark
                                 angle = 90;
+                                Point pt = pointi[0];
+                                pointi[0] = pointi[1];
+                                pointi[1] = pointi[2];
+                                pointi[2] = pointi[3];
+                                pointi[3] = pt;
+                                
+                                pt = pointj[0];
+                                pointj[0] = pointj[1];
+                                pointj[1] = pointj[2];
+                                pointj[2] = pointj[3];
+                                pointj[3] = pt;
                             } else if (mean(test_t.submat(335, 345, 245, 255)).val[0] < avg) {//down, flip up if area is dark
                                 angle = 180;
+                                Point pt = pointi[0];
+                                pointi[0] = pointi[2];
+                                pointi[2] = pt;
+                                pt = pointi[1];
+                                pointi[1] = pointi[3];
+                                pointi[3] = pt;
+                                
+                                pt = pointj[0];
+                                pointj[0] = pointj[2];
+                                pointj[2] = pt;
+                                pt = pointj[1];
+                                pointj[1] = pointj[3];
+                                pointj[3] = pt;
                             }
                         }
-                        System.out.println(angle);
-
+                        print += (angle);
+                        print += "\n";
                         if (angle != 0) {
                             warpAffine(test_t, test_t, getRotationMatrix2D(new Point(250, 250), (360 - angle) * -1, 1), new Size(500, 500));
                         }
+                        //</editor-fold>
 
                         List<MatOfPoint> temp = new ArrayList();
-                        temp.add(new MatOfPoint(possibleHull.get(i)));
-                        temp.add(new MatOfPoint(possibleHull.get(j)));
-                        insideSquares.add(possibleHull.get(j));
-                        outsideSquares.add(possibleHull.get(i));
-                        drawContours(web_img, temp, -1, new Scalar(0, 0, 255), 3);
+                        temp.add(new MatOfPoint(pointi));
+                        List<MatOfPoint> temp2 = new ArrayList();
+                        temp2.add(new MatOfPoint(pointj));
+                        insideSquares.add(pointj);
+                        outsideSquares.add(pointi);
+                        drawContours(web_img, temp, -1, new Scalar(255, 0, 0), 3);
+                        drawContours(web_img, temp2, -1, new Scalar(0, 0, 255), 3);
 
                         test = test_t;
                         gray = gray_t;
+                        done = true;
+                        System.out.println(print);
+                        break;
+                    }
+                    if (done) {
+                        break;
                     }
                 }
                 // */
                 //</editor-fold>
 
+                
+                
+                
+                
                 BID.display(web_img, 0);
                 BID.display(gray, 1);
                 BID.display(test, 2);
@@ -407,6 +503,10 @@ public class JavaVRAparapiV2 {
         return hull.toArray(new Point[]{});
     }
     //</editor-fold>
+
+    public static Point midpoint(Point p1, Point p2) {
+        return new Point((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+    }
 
     public static boolean isQuadInQuad(Point outsideHull[], Point insideHull[]) {
         boolean hits[] = new boolean[insideHull.length];
@@ -521,5 +621,13 @@ public class JavaVRAparapiV2 {
 
     public static double distance(Point p1, Point p2) {
         return Math.sqrt(p1.x * p2.x + p1.y * p2.y);
+    }
+
+    public static double areaQuad(Point p1, Point p2, Point p3, Point p4) {
+        return areaTriangle(p1, p2, p3) + areaTriangle(p1, p4, p3);
+    }
+
+    public static double areaTriangle(Point p1, Point p2, Point p3) {
+        return .5 * Math.abs(p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y));
     }
 }
