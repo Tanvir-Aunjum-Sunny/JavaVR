@@ -4,14 +4,15 @@
  */
 package com.hstar.javavr.aparapi;
 
+import com.hstar.javavr.aparapi.tools.Utilities;
 import java.awt.Color;
-import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Point;
 import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.util.HashMap;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -24,10 +25,10 @@ import org.opencv.core.Mat;
  */
 public class BID {
 
-    private static HashMap<Integer, BID> displays = new HashMap<>();
-    private JFrame frame;
-    private ImgView view = new ImgView();
-    private int id;
+    private static final HashMap<Integer, BID> displays = new HashMap<>();
+    private final JFrame frame;
+    private final ImgView view = new ImgView();
+    private final int id;
 
     private BID(int id) {
         this.id = id;
@@ -69,9 +70,9 @@ public class BID {
      */
     public static void display(Mat mat, int id) {
         try {
-            BufferedImage bi = JavaVRAparapiV2.getImage(mat);
+            BufferedImage bi = Utilities.getImage(mat);
             display(bi, id);
-        } catch (Exception e) {
+        } catch (IOException | NullPointerException e) {
         }
     }
 

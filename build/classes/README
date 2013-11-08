@@ -1,0 +1,4 @@
+Please note, to run the following dlls need to be placed in the tools folder.
+aparapi_x86_64.dll - http://code.google.com/p/aparapi/
+lwjgl64.dll - http://lwjgl.org/a
+opencv_java246.dll - http://opencv.org/

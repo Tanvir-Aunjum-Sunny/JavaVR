@@ -4,7 +4,7 @@
  */
 package com.hstar.javavr.aparapi;
 
-import static com.hstar.javavr.aparapi.JavaVRAparapiV2.addDir;
+import com.hstar.javavr.aparapi.tools.Utilities;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,15 +33,8 @@ public class Calibration {
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-
-        try {//todo replace
-            addDir("C:\\Users\\Saswat\\Dropbox\\Documents\\Java\\libraries\\opencv");
-            addDir("C:\\Users\\Saswat\\Dropbox\\Documents\\Java\\libraries\\Aparapi");
-        } catch (IOException ex) {
-            Logger.getLogger(JavaVRAparapiV2.class.getName()).log(Level.SEVERE, null, ex);
-        }
-
-        System.loadLibrary("opencv_java246");
+        
+        Utilities.librarySetup();
 
         final VideoCapture capture = new VideoCapture(0);
         Mat web_img = new Mat();
